@@ -1,0 +1,56 @@
+NO=1
+
+default: example$(NO).exe
+
+# PLAYER=d:/andre/player
+PLAYER=e:/projects/player
+
+PLAYER_LIBs=$(PLAYER)/lib/plyctrl.o $(PLAYER)/lib/libdevs.o \
+	    $(PLAYER)/lib/libmods.o $(PLAYER)/lib/dos.o \
+	    $(PLAYER)/lib/libins.o
+PLAYER_INC=$(PLAYER)/include
+
+%.o : %.cc
+	gcc -c -I$(PLAYER_INC) $^
+
+# ...............................................................
+# the SoundBlaster AWE example with MOD loading:
+#
+example1: example1.o
+	gcc -s -O6 example1.o $(PLAYER_LIBs) -o example1
+
+example1.exe: example1
+	stubify example1
+
+# .........................................................
+# the GUS card example with Amiga-MOD loading:
+#
+example2: example2.o
+	gcc -s example2.o $(PLAYER_LIBs) -o example2
+
+example2.exe: example2
+	stubify example2
+
+# ...............................................................
+# the SoundBlaster 1.0/2.0/PRO/16 example with Amiga-MOD loading:
+#
+example3: example3.o
+	gcc -s -O6 example3.o $(PLAYER_LIBs) -o example3
+
+example3.exe: example3
+	stubify example3
+
+# ...............................................................
+# the NoSOund example with Amiga-MOD loading:
+#
+example4: example4.o
+	gcc -s -O6 example4.o $(PLAYER_LIBs) -o example4
+
+example4.exe: example4
+	stubify example4
+
+
+clean:
+	del example$(NO).exe
+	del example$(NO).
+	make

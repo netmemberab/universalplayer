@@ -1,0 +1,239 @@
+ .-- -----=========================================================------ --.
+(               infofile about object oriented design 			     ).
+(           of the multdevice/multiformat music player		             ))
+ `-- -----=========================================================------ --''
+
+Author: Andre' Baresel
+
+1. public interface:
+
+            Device
+	       	     
+	               PlayerControl
+               	     
+            Musicfile
+
+---> interfaces:
+  - access from module(music file) to device:
+    while module loading: (gets ptr with module->load(...,device))
+      <*> instrument allocation (through InstrumentLoaderClass)
+      <*> instrument upload (through InstrumentLoaderClass)
+      <*> instrument freeing
+  - access from device to module
+    while playing: (gets ptr with device->start(module))
+      <*> start module==reset variables, use it also for restart
+      <*> get next device commands
+		--> DeviceControlCommands (list of simple instructions)
+  - communication between PlayerControl and Device:
+      <*> install/configure device
+      <*> start/stop/continue playing on device
+  - communication between PlayerControl and Musicfile:
+      <*> load/remove module
+--------------------------------------------------------------------------------
+PlayerControl on UNIX maschines creates a new child process for each device.
+  Module loading/playing is done in this child. In this way we get playing in 
+  'background' because most sounddevices under unix are stream driven, so you
+  have to write continuesly data. That's done by the child which also mixes
+  the data. Communication is done via shared memory and signals.
+-> That's a bit more simple under DOS, where all play routines are IRQ driven.
+--------------------------------------------------------------------------------
+InstrumentLoaderClass:
+  reliable for instrument typeconversion/restructuring, if this is possible...
+  The module load routine does intialize its required InstrumentLoaderClass and
+  the DeviceClass does request its required output format. The InstrumentLoaderClass
+  does check if conversion/operation is possible. 
+  InstrumentLoadClass is abstract ! All real implementations are done in several 
+  inputtype depended subclasses (e.g. SampleLoaderClass, ExtendedSampleLoaderClass)
+  Some examples:
+  * A MidiLoadClass (created in a MIDI-loader) may reject the request to convert
+    a midi-instrument name/number to an adlib-instrument requested by an 
+    ADLIB-soundcard (that means in reality: you can't play a midi on ADLIB-hardware)
+
+  * A SampleLoaderClass (e.g. created in a XM-loader) does conversions like an 
+    8bit unsigned (from the module) to 16bit-signed samples requested by SBAWE32.
+
+Some fully implemented InstrumentClass subclasses come with the base-player:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+SampleLoaderClass is a fully implemented subclass of InstrumentLoaderClass,
+  it provides simple loading and conversion of 8/16bit unsigned/signed 
+  lsb/msb-ordered samples. PrepareUploading() is an empty function. You need
+  to register a sample before uploading it, but you can only register one 
+  instrument at a time. (16bit byte order is maschine depended!)
+
+SampleStreamLoaderClass ... uploading through a stream
+SampleFileLoaderClass   ... uploading through a FILE
+
+ExtentedSampleLoaderClass is an extended version of SampleLoaderClass. Loading
+  functionality is improved by sample memory management to support sample 
+  reduction in case of a lack of memory on a device. Unlike the simple 
+  SampleLoaderClass you need to register _all_  samples before uploading any of 
+  them to the device, that's because the reduction algorithm does work on the
+  registration data. It checks sample rates+sizes of all registered
+  samples and calculates the best sounding reduction values, to provide that
+  all samples can be loaded on the device. So you have to Register,Prepare
+  and than upload the samples (check out Device->PrepareUpload).
+
+main data flow of extended sample loading:
+   Loader is an instance of ExtendedSampleLoaderClass
+   - Loader->initializing (in the beginning of Module load)
+   - Sample registration Loader->RegisterInstruments(SampleInfo);
+   - if all done: 
+     call Device->PrepareUpLoad(Loader)
+     this does:
+     { Device Memory Allocation
+       Loader->SetOutputFormat()
+       Loader->PrepareUpload(Memsize); -> reduce big samples with hifreqs first !
+     }
+   - Sample upload+conversion:
+       Device->Upload(Loader,InstrumentID,size)
+       {  Loader->GetInstrumentSpec(InstrumentID,&SampleSpec)
+          while not "SampleSpec.size" samples read do:
+            * Loader->Read(InstrumentID,ios,DataPtr,Datasize);
+            * Write to Device Memory
+       }
+   state= not_enough_memory/device_failed/sample_stream_failed/
+	  conversion_failed/instrument_loader_failed/bad_instrument_id/
+          allready_uploaded/wrongid/out-of-range
+   - FinishUpLoad(): "mark not uploaded samples - change resources" 
+       { Loader->GetNotLoadedInstruments()
+	 Mark them as not playable or just forget it ...
+       }
+   - destroy InstrumentLoaderClass at the end of Module.load. It's not
+     needed anymore.
+--------------------------------------------------------------------------------
+PlayerControl() - simple player interface:
+
+DeviceID PlayerControl.InstallDevice(DeviceRegistry,DeviceOptionPtr)
+  ---> DeviceRegistry is a pointer to an install-routine for a device
+       (e.g. USE_SB,USE_SBAWE,USE_GUS) ... you can create such routines
+       with a <register.h> function
+  ---> DeviceOptions very device depended data structure (that's why only a
+       pointer) NULL means default options
+       mainly this is used to specify information about current hardware 
+       setup (base,irq,dmachannel) which is needed to initialize the device
+       correctly
+  ---> DeviceID is a number identifies a device with a special setup, e.g. you 
+    install two soundblasters one at base 0x220 and another on base 0x240
+    to access them you will get two different IDs
+
+Status   PlayerControl.ConfigureDevice(DeviceID,DeviceSettingsPtr)
+  ---> Settings are very device depended (that's why only a pointer)
+       This is used to specify information for device hardware which is needed
+       for playing sounddata on device (e.g. soundquality, stereo/mono, filter)
+
+Status   PlayerControl.LoadModule(DeviceID,FileType,MusicFile[,offset])
+  ---> check if module fits to hardware ... (e.g. don't try a MOD on a Adlib ;)
+  --->   new file type 'ResourceFile' + filename -> loading from a resource file
+  --->   all other filetypes + name/FILE*/iostream or irscstream (ResourceFileReaderClass)
+         i/orscstream is an independed class you can use it freely in other projects
+
+Status PlayerControl.RemoveModule(DeviceID)
+
+Status PlayerControl.StartPlay(DeviceID)
+Status PlayerControl.StopPlay(DeviceID)
+Status PlayerControl.ContinuePlay(DeviceID)
+
+--------------------------------------------------------------------------------
+ResourceID Device.AllocateInstruments(DeviceID,info_record)
+---> allocate some kind of instrument resource on device
+---> information about type,needed space etc. in info_record (userdata !!)
+     foreach instrument: 
+        info_record { InstrumentType type;
+		      dword size;
+		      void * UserData;
+		    };
+
+---> ResourceID == not enough memory
+		== wrong instruments (not supported on this device)
+
+Status Device.UploadInstrument(ResourceID,sampleno,InstrumentLoadClass&)
+---> InstrumentLoadClass is for reading instruments from musicfile and convert 
+     it to the format the devices does request for...
+---> often used Loaders are already implemented in SAMPLE.C/H ...
+------------------------------------------------------------------------------
+FUNCTION PlayerControl.StartPlay(DeviceID)
+
+  Device->Start(Module)                       start hardware for playing
+
+return 0 if settings are ok.
+
+FUNCTION PlayerControl.StopPlay()
+  Stops hardware playing. But maybe only temporary, only the destructor of the
+  Device has to close the device.
+
+FUNCTION PlayerControl.ContinuePlay()
+  Continues playing of a stoped device.
+
+---------------------------------------------------------------------------------
+?????????????????????????????????????????????????????????????????????????????????
+Device.timing(Module):
+	is called with timings specified in commands.timing it does read the 
+	next device commands: 
+
+ 	* Module->ReadDeviceCommands(commands)
+		Reads the notes,effects etc. in the
+		internal module format and converts
+		them to simple device commands, like
+		CHG_FREQUENCY, CHG_STOPPLAY etc.
+		and writes time for next changes
+		returns: ... finish,loop module ...
+
+  	and setup device for this: 
+	* SetDeviceCommands(commands)
+?????????????????????????????????????????????????????????????????????????????????
+--------------------------------------------------------------------------------
+Predefined DeviceClass methods:
+
+Device.constructor(DeviceOptionPtr):
+  	opens device and checks for correct hardware settings.
+	(Device depended infostructs-->Registry)
+
+Device.destructor():
+  closes devices (hardware setings) and delets all dynamic data from memory.
+
+Device.Start(Module)
+  calls:
+  Module->Start()
+      	Setup all variables are needed to play the module from the beginning,
+	return Status if module is ready for playing.
+    Module->ReadChannelSettings();
+
+
+Device.copy constructor and assignment should be not allowed !!
+--------------------------------------------------------------------------------
+Module.constructor(iostream,aDevice)
+  loads module into memory, calls device to upload sample.
+
+Module.destructor:
+    removes module from memory
+
+Module.copy constructor, assignment not allowed !!
+---------------------------------------------------------------------------------
+Registry:
+--> REGISTRY.H
+
+ Is designed to manage support of any device or module. Each device or module
+ has a special initialization routine 
+
+ This routine is a simple MACRO you need to include to your code in addition
+ to including the headers of the devices/modules you need/wan't to support.
+ In this way the Linker has the chance to remove code for all not used classes
+ (devices/modules) and we get in a simple way a small code.
+ This "dynamic initialization" is called by PlayerControl.
+
+---------------------------------------------------------------------------------
+To think about:
+    * SampleRegisterClass - routines to store/remove/access a couple of samples
+      this is needed by all 'wavetable' devices (mixdev,sbawe,gus)
+	---> NOT SampleLoaderClass, this is for conversion !!
+    * note&instrument-playinfo-screen-output as logging information
+    * PlayerControlClass as abstract class -> which functions should be written
+      (that's after it does run with one implementation, but keep this in
+       mind!)
+
+  an inheritant ExtendedPlayerControlClass could support features like:
+    * extra timing (for synchronisation)
+    * debugging information (e.g. a device control command pipe to debug what 
+      happend)
+    * what about multiple inheritance ? Inheritat methods and variables of
+      extra controls to implemented sub classes of PlayerControlClass...

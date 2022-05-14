@@ -1,0 +1,102 @@
+/****************************************************************************
+   Module reading functions (abstract)
+  --------------------------------------------------------------------------
+  (c) copyright 1995 by A.Baresel
+
+  created: 11.11.1995
+****************************************************************************/
+
+#if !defined(__MODULE_H__)
+#define __MODULE_H__
+
+#include "global.h"
+#include <stdio.h>
+
+#define MAXCHANNELS 32
+
+// Status values:
+#define NOERROR       0
+#define ERRORLOADING -1
+#define WRONGFORMAT  -2
+#define NOMEM        -3
+#define NOSUPPORT    -4
+
+struct chninfo_t {  WORD  changes;     // flags about what is set
+		    WORD  instno;      // instrument on this channel
+		    DWORD frequency;   // frequency to play the instrument with
+		    WORD  MIDInote;    // MIDI note format
+		    BYTE  volume;      // volume to play
+		    WORD  panposition; // position in stereo mode
+		    DWORD offset;      // for the set offset command
+		 };
+
+// values for changes -------------------------
+#define NOCHANGES      0
+#define CHG_INSTR      1   /* setup instrument data in channel */
+#define CHG_FREQ       2   /* change only frequency (continue playing from current position) */
+#define CHG_RESTART    4   /* if instrument is not playing any more then restart it */
+#define CHG_VOLUME     8   /* set new volume */
+#define CHG_PANNING   16   /* set new panning position */
+#define CHG_STOPMIX   32   /* stop mixing this channel immediatly */
+#define CHG_SETOFS    64   /* set offset of current instrument */
+#define CHG_DOMIX    128   /* mix this channel */
+
+// ONLY CHG_INSTR & CHG_FREQ at the _same_ time or CHG_DOMIX will start playing
+// an instrument in a channel
+
+// ------------------------------------------------------------------------------------
+
+struct playinfo_t { BYTE  whatTT;   // 0 - time in seconds 1 - time in amiga tempo format
+                    DWORD time;     // time for next call in millisec. (e.g.MIDI)
+                    BYTE  tempo;    // time for next call in BPM (AMIGA)
+		    struct chninfo_t chn[MAXCHANNELS];
+		  };
+
+#include "device.h"
+
+class Module_c {
+  protected:
+    short status;
+    const char * ModuleID;
+    FILE * file;
+    long startoffset;  // Module startoffset in file
+  public:
+    Module_c(void) { }
+    Module_c(FILE* f);                  // read from file f from current position
+    Module_c(FILE *f,long position);    // read from file f from 'position' 
+    Module_c(char *name);               // open file 'name' and read module 
+    Module_c(char *name,long position); // read from position in file 'name'
+    virtual ~Module_c(void) { };
+
+    virtual short startmodule(void)=0;
+    short   getstatus(void);
+    const char * getModuleID(void) { return(ModuleID); }
+    virtual short nextnotes(struct playinfo_t* playinfo_p)=0;
+    virtual DWORD readSMP8_BLK(BYTE * destination,DWORD size,BYTE format)=0;
+    virtual DWORD readSMP16_BLK(WORD * destination,DWORD size,BYTE format)=0;
+};
+
+extern Module_c * module_loading(char *name,WORD type);
+extern Module_c * Module;
+
+#ifdef __PLAYINFO__
+struct modchn_s { BYTE note;
+		  WORD instr;
+		  WORD sample;
+		  BYTE effect;
+		  BYTE parameter;
+		  void * specificdata; // points directly to module channel
+		};
+struct ModuleInfoStruc { struct modchn_s modchn[32];
+			 BYTE channels;
+			 char * ModuleID; // points directly to module ID string
+		       };
+class ModuleInfo_c {
+		public:
+			virtual void get(struct ModuleInfoStruc &MIS)=0;
+			virtual ~ModuleInfo_c(void);
+		   };
+extern ModuleInfo_c * ModuleInfo;
+#endif
+
+#endif

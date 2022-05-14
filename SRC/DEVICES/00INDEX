@@ -1,0 +1,15 @@
+------------------------------------------------------------------------------
+1. software mixing code
+
+  mixdev, 
+  mixer??, 
+  filter     base class for all non wavetable sound cards
+
+2.system depended device hardware accessing routines
+
+  dos_gus    Gravis Ultra Sound (DOS)
+
+  dos_awe    SoundBlaster AWE32 (DOS)
+
+  dos_sb     SoundBlaster/pro/16 (DOS)
+ 

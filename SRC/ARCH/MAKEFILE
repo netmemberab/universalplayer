@@ -1,0 +1,20 @@
+#
+# currently quite simple, but it's done for future extensions
+#
+
+arch.dos: xendian.o
+	@$(MAKE) -C dos
+	$(LD) -r -o $(PLAYER_LIB)/dos.o xendian.o dos/dos.o 
+
+arch.all: xendian.o
+
+%.o : %.cc
+	$(CC) $(MAIN_OPTS) $<
+
+depend:
+	$(CC) $(MAIN_OPTS) -M *.cc
+
+clean:
+	@$(MAKE) -C DOS clean
+	@$(RM) *.o
+

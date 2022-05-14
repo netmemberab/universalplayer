@@ -1,0 +1,5 @@
+config-files for the different systems...
+
+copy the required one into player-base-dir and rename it to
+
+"config"

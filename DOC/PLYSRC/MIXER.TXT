@@ -1,0 +1,103 @@
+
+                   ------------------------------------
+                --    Description for mixing routines    --
+                  --       Author Andr‚ Baresel        --
+                                --------
+ Introduction:
+
+For all soundcards do support only mono or stereo output of data you need
+special mixing routines to play multichannel music. I call this a "software
+mixer". These mixing routines make it possible to play different samples (1)
+with different frequencies and volumes at different channels. Mixing is simply
+done with adding amplitude values given as digital sound data.  After adding 
+all of them the result needs to be fit in output format (e.g. 8bit). For
+more details about this take a look at chapter "output conversion".
+The most timecritical part is to resample the instruments for different 
+frequencies. That's done "in the fly" with mixing all channels.
+
+  Mixing channels:
+
+    8bit samples:
+
+    * panning: two volumes for each stereo channel
+
+    * volume: done with a lookup table voltab[vol][smpl]= smp scaled with vol
+
+    * frequency: base sample rate of device is fixed, to mix a sample with a
+	specific samplerate do 'simply' stretch the sampledata. A fixed point
+	offset is used for this. Depending on samplerate a 'step' value tells
+	the mixer the speed to run through the sample data.
+
+    16bit samples:
+	* volume scaling is NOT precalculated ! 3 memory accesses per sample
+          are slower than 1 "mul" and a shift.
+
+        -----------------------------------------------------------------------
+	  the idea with 3 tables: val=hival*256+loval
+		    val*vol/64 == (hival*vol/64)*256 + loval*vol/64
+	  a problem to solve: val is signed ! Scaling loval with a table needs
+	  info about signess of val or hival. --> a simple trick is to prepare
+          loval if sign is raised: loval=-loval-1
+
+	    result = hivoltab[vol][hival] + signtab[hival]^voltab[vol][loval];
+
+          signtab is 0xffffffff if sign is raised. ( a<0: (-a-1) xor 255 = a )
+         ----------------------------------------------------------------------
+
+  for better output results, samples need to be interpolated:
+
+    fraction:0...65536
+
+  * linear interpolation:
+      (sample1+sample2)*fraction/65536   
+
+  * quadric interpolation:
+      (sample1+sample2)*quadtab[fraction>>8]/256  
+
+    quadtab[val:0..127]=val*val/128
+    quadtab[val:128...255]=(255-val)*(255-val)/128
+
+  Output conversion:
+
+   4 ideas.
+   1. The fastest way, done with a 13bit (2*8KB) lookup table.
+      32*(-127...128) = -4095...4095
+      conversion:   result=posttable[val+4096]
+      optimization - val is set to 4096 before adding channels (SIGNED DATA)
+      scaling and clipping is done in posttable.
+
+   2. The fast 16bit mixing, done with a 16bit (2*64KB) lookup table
+      Nearly equal to first idea - volumetable output is 10bit plus sign 
+      instead of 7bit plus sign. (better quality at low volumes)
+      conversion:   result=posttable[val+32767]
+
+   3. The tricky medium speed, done with 3 lookup tables (6KB).
+      The only difference to second idea is that conversion is done with 3
+      small lookup tables: 
+         (val=HB*256+LB  HB: high byte, LB: low byte)
+         result=LOtab[LB][postab[HB]] + HItab[HB];
+      --> that are two memory accesses more for 122KB less memory usage...
+
+   4. The high quality 16bit output, -> 24bit mixing done with .. lookup tables (..).
+      A copy of the third idea modified slidly for 24bit data. A 16MB lookup table
+      won't be a good choice ;)
+        val(DWORD): -32*65536...32*65536 needs to be scaled (vol:0..127) and 
+        clipped to 16bit output values: 0...65535
+
+      res=val*(IMUL)vol>>11 ---> -65536...65536  0xffff0000...0x00010000
+      resHI=res>>16         ---> 0xfffe,0xffff,0x0,0x0001,0x0002
+
+  hints:
+   For 8bit output use allways idea 1. 
+   For high quality 16bit output with 8bit samples only, use idea 2 or 3. 
+   For high quality 16bit output with 8/16 bit samples use idea 4.
+
+  References:
+
+sample     mainly used as digitized sound data of an instrument 
+
+sampling   digitizing analog sound data 
+
+sampling frequency   ....
+
+interpolation 

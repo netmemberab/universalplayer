@@ -1,0 +1,209 @@
+
+                    - -- --------------------------- -- -
+            - --       Additional info for XM-format         -- -
+              - --       written by Andre' Baresel         -- -
+                    - -- --------------------------- -- -
+
+author:
+    There might be some serious "english language bugs", but hey better then 
+    nothing, isn't it ?
+
+  You need to know about how to write a simple MOD-player to understand the
+  things I try to explain now. It wouldn't be bad if you also know about how
+  to play S3Ms.
+
+XM instrument. how does it work ?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~  
+VOLUMES:
+  1. 16 samples per instrument
+    - the active sample is chosen by the active note
+    - it has its default volume  "instr_vol" (0..64)
+    - this value can be changed with effects in volume/effect column of the
+    current track (take a look at effect description)
+
+  2. volume envelope
+    result is the current envelope volume: "env_vol" (0..64)
+    - points between envelope points were linear interpolated
+    - loops only in positiv direction
+    - substain point lets the volume stay at one level until a key-off
+    - if last envelope point is reached env_vol will stay at this level
+    - if no volume envelope is activated, then env_vol=64
+
+    - an possible example: 
+        "envelope loop with a substain point inside. what we gonna do ?"
+        answer: if we reach the substain before a keyoff we'll stay there until
+        we get it. If keyoff comes before, we simply ignore the substain.
+        with the keyoff we start volume fade out, AND we are looping in the
+        envelope, the substain point does not exist anymore (until next restart
+        of the instrument)
+  
+  3. key-off volume fade
+    - volume fade off only if volume envelope is activated
+    result is the fadeout volume "fadeout_vol" (0..32767)
+    - it starts at full volume 32767
+    - once activated it will slide the fadeout_vol down to 0 independed
+      from all other volume changes (subtract each time volfadeout given in 
+      instrument)
+    - keyoff (note==96) removes substain points, and if envelope pointer stays
+      at a substain, it goes on
+
+after all you have to calculate the final volume for an instrument:
+    scale*(instr_vol/64)*(env_vol/64)*(fadeout_vol/32768)
+
+    scale is maximum volume for your device where you mix the sample (e.g.
+    a software mixer for soundblaster).
+
+PANNING:
+  not yet tested...
+
+AUTOVIBRATO:
+    - vibsweep is the time in ticks from vibrato depth 0 to requested value
+    - vibrato does work in a table of 256 entries (one sinus wave)
+    - it's independed from all other effects (e.g. another vibrato - they'll
+      run at the same time !)
+    - it must not influence any effect. So don't store the resulting period
+      value, simply use it to calculate the frequency and forget about it.
+
+XM effects. how to implement them correct ?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+general stuff:
+  You have to store the parameters of those effects are marked with (*) in 
+  XM.TXT separatly. e.g. a portamento with zero as parameter will use the last 
+  nonzero parameter was used with a portamento on the channel (not a nonzero 
+  parameter of any other effect like it has to be done in S3M and MOD).
+
+  While reading new effects and their parameters you have to store the nonzero
+  ones for later use in effect handling. First store the value comes from effect
+  column and then from volume column. Yes, indead I tested this several times !
+
+  Volume and effect column run their effects at the same time, e.g. Portamento 
+  in both columns is possible - in that way it runs finaly at double speed.
+  (Why isn't there any remark in XM.TXT ???) But take a look at vibrato !!
+  Portamento up with speed 1 in volume column and slide down with speed 1 in
+  effect column let the pitch stay at the same level.
+
+PORTAMENTO: 	- instrument changes will be ignored (but instrument
+		  default volume will be set !)
+		- only pitch does change (ignore new instrument numbers in
+		  pattern)
+		- unlike S3M,MOD portamento will also start in a row with no
+		  note, in this case it will slide to the value was last set,
+		  simply store a "SlideTo" value if portamento and a new note
+		  does occure
+
+Arpeggio:       - arpeggio base is the _current_ period and the two other
+		  values were formed by this
+                - unlike MOD and S3M in XM you have to reset the counter which
+		  switches between the three notes each row in pattern !!
+		- arpeggio might run together with portamento in volume column
+		  in that case the three notes you switch between do change with
+		  this portamento (simply forget about precalculating the three
+		  frequencies like we can do it in MOD,S3M)
+
+Vibrato:	- vibrato in volume column will be ignored if at the same time
+		  an effect in effect column changes the pitch (e.g. portamento,
+		  portamento up/down, vibrato etc.)
+                - vibrato in effect column does take care about changes in volume
+		  column (e.g. an portamento -> it will slide and vibrate !)
+		- so implement it as follows:
+		_______________________________________________________________
+		  take current period value, "vibrate" it  and calculate the
+		  resulting frequency, don't care about later changes,
+		  if it was in the volume column a possible effect in effect col
+		  will take again the same period value (not changed by vibrato!) 
+                  and do its job, in that way frequency changes by vibrato will
+                  be overwritten by the effect column.
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+		- at speed 1 vibrato will finish one sinus wave in 64 ticks
+		  (at speed 3, in 32 rows ---> (3-1)*32 !) that is 4 times the
+		  speed autovibrato runs
+		- for each channel you can setup different waveforms
+		- do only reset table offset counter at new vibrato start if 
+		  tab<4 was set and new instrument !
+		- if one nibble of effect parameter is zero the old value is used
+		  e.g. in  -40F- old nonzero speed is used
+		       in  -410- old nonzero depth is used (depth 0 does not exist like 
+		    in S3M/MOD)
+		- if vibrato runs both in volume and effect column counter will
+		  be incremented twice, but vibrato depth is normal -> effect
+		  column overwrites volume column pitch changes !
+Patternbreak:   - number has to be converted to decimal: 0x64 to 64 !	
+		  (effpar>>4)*10+(effpar&0xf);
+		- if jump is to far (bigger than number of rows in next pattern)
+		  jump to row 0
+
+Fine Portamento up/down: 
+		- parameters are independed from portamento up/down 
+		  parameters!
+
+Xtra Fine Portas:
+		- parameters also independed (do not overwrite fine portmento 
+		  parameters)
+
+Pattern loop:	- loops are independed in the channels, loopstart does not move
+		  if a loop is finished (it is only set by the E-60 command)
+		- pattern break and position jump have a higher priority !
+		- loop starts where not reseted at the beginning of new patterns
+		- E-60
+		  E-61
+		  E-62  well be an endless loop 
+
+Set finetune:   - finetune = ((effpar&0xf)-7)*16
+		- only set with note !
+
+Note cut:	- parameter gives number of ticks until volume=0
+		- if ticks>speed notecut will not be done !
+
+Keyoff command (K):
+		- parameter specifies number of ticks to wait until keyoff
+		  (like note cut)
+
+Pattern delay:	- well, implemented it as in MOD (not like S3M)
+
+Tremolo:	- like vibrato, depth 15 means a maximum sinus of +/- 60 !
+		  (add 4 times depth)
+
+Tremor:		- uses also last nonzero parameter !!
+		- counter for off&on time is not reseted if we go to next 
+		  row in pattern
+
+Set envelope position:
+		- does only influence volume envelope
+		- parameter is the number of ticks from envelope start
+		- stay at last envelope point !
+
+set sample offset:
+		- only if new note
+		- jumps over loop points are allowed and will disable loop this
+		  time
+
+All other effects might be trivial or the description in FT2-help is ok or
+I was simply to lazy to write down something (take a look at S3M/MOD effect
+description).
+
+XM notes, periods and frequencies
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  Period values differ between both modes, but the resulting frequency is
+  !nearly! the same (only a couple of Hz difference).
+
+  Linear frequency:
+
+    WORD period = 10*12*16*4 - note*16*4 - finetune/2 + 64;
+    ---> +64 is correct !!! what a mess if you don't know this.
+
+    DWORD frequency = (DWORD)(8363.0*pow(2,(6.0*12*16*4-period)/(12.0*16*4))));
+    ---> that are all floating point functions !
+    ---> you need pow(float x,float y) = x^y.    e.g. pow(2,0.5)=1.414213
+
+  Amiga frequency:
+    // NOT YET FULLY correct -> finetuning between table entries is not done
+    // SORRY but the XM.TXT is wrong at this point !
+
+    SWORD TAB_POS = (NOTE % 12) << 3 + (FINETUNE>>7)
+    SBYTE SHIFT=0;
+    // move inside table borders:
+    if (TAB_POS<0) { TAB_POS+=12*8; SHIFT--; }
+    if (TAB_POS>12*8) { TAB_POS-=12*8; SHIFT++; }
+    WORD period = (period_tab[TAB_POS]<<5)>>(SHIFT+NOTE/12);
+
+    DWORD frequency = 14317456/period

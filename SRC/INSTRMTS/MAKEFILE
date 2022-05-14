@@ -1,0 +1,9 @@
+
+libinst.o: $(INSTRUMENTS)
+	$(LD) -r -o $(PLAYER_LIB)/libins.o $^
+
+%.o : %.cc
+	$(CC) $(MAIN_OPTS) $<
+
+clean:
+	@$(RM) *.o

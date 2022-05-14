@@ -1,0 +1,64 @@
+#****************************************************************************
+# Configuration for making libs (for DJGPP)
+# ---------------------------------------------------------------------------
+# Created: 26.10.1996
+#****************************************************************************
+# Do your changes to use it on your system:
+
+.EXPORT_ALL_VARIABLES:
+
+#PLAYER=d:/ANDRE/PLAYER
+PLAYER=e:/projects/player
+
+PLAYER_INC=$(PLAYER)/include
+PLAYER_SRC=$(PLAYER)/src
+PLAYER_LIB=$(PLAYER)/lib
+
+MAIN_MAKEFILE=djgpp.mak
+
+MAKE=make
+CC=gcc
+LD=ld
+RM = del
+
+#----------------------------------------------------------------------------
+# to include debugging output:
+#   -Wall for warnings
+
+DEBUG_OPT=-D__DEBUGGING__
+#NO_DEBUGINFO=-s
+#OUT_MAP=-Xlinker -M
+
+#----------------------------------------------------------------------------
+# specify the player control
+CONTROL=dosctrl.o
+
+#----------------------------------------------------------------------------
+# specify the module filetypes you want to include in the library 'libmods.o'
+# don't forget to add the module specific instrument loaders (if it isn't
+# implemented direct)
+#
+
+MODULES=modfile.o
+# not:     mtm.o s3m.o xm.o
+
+#----------------------------------------------------------------------------
+# each module uses its specific instrument type, some general instrument
+# loader classes can be linked this way - if they aren't implemented in
+# module (check through headers of module-"C++"-file headings)
+# e.g.    modfile.cc needs smpfile.o
+#         modstrm.cc needs smpstrm.o
+INSTRUMENTS=smpfile.o
+#smpstrm.o
+
+#----------------------------------------------------------------------------
+# architecture specific code is needed to access the devices
+ARCH_SPEC=$(IRQ) $(DMA)
+
+#----------------------------------------------------------------------------
+# specify the devices you want to support (libdevs.o)
+
+MIXERS=mixer_13.o m13i86.o
+# mixer_16.o mixer_24.o filter.o
+
+AUDIODEV= dos_sb.o mixdev.o mixers.o dos_awe.o dos_nosd.o dos_gus.o

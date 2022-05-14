@@ -1,0 +1,638 @@
+Turbo Assembler	 Version 3.2	    12/03/97 20:37:56	    Page 1
+m13i86.asm
+
+
+
+      1					 ;****************************************************************************
+      2					 ;   Mixer13 - fast ix86 assembler code
+      3					 ; --------------------------------------------------------------------------
+      4					 ;  (c)	copyright 1996 by A.Baresel
+      5					 ;
+      6					 ; compile it with TASM	/ml /l and convert it with o2c (obj2coff)
+      7					 ; then	link it.
+      8					 ;****************************************************************************/
+      9					 ; neg dir - not tested
+     10
+     11		  =0000			 PENTIUM = 0
+     12
+     13					 p386
+     14					 ideal
+     15	00000000			 model flat,C
+     16
+     17	00000000			 DATASEG ; --------------------------------------------------------------------
+     18						 public	 volumetab
+     19
+     20						 public	 mixclocks
+     21						 public	 mixloops
+     22
+     23						 public	 posttab
+     24
+     25	00000000  4100*(????)		 volumetab	 dw	 65*256	dup (?)
+     26	00008200  2000*(??)		 posttab	 db	 2*4096	dup (?)
+     27	0000A200  ????????		 mixstackptr	 dd	 ?
+     28	0000A204  ????????		 mixparameters	 dd	 ?
+     29
+     30	0000A208  00000000		 mixclocks	 dd	 0
+     31	0000A20C  00000000		 mixloops	 dd	 0
+     32	0000A210  00000000		 cyclecount	 dd	 0
+     33
+     34					 align 4
+     35	0000A214  3F			 lvol		 db    000003fh
+     36	0000A215  3F			 rvol		 db    000003fh
+     37	0000A216  ????????		 __sav_ebp	 dd    ?
+     38
+     39	0000A21A  ????????		 __stepfrac	 dd    ?
+     40	0000A21E  ????????		 __stepint	 dd    ?
+     41
+     42	0000A222			 CODESEG ; --------------------------------------------------------------------
+     43						 public	 _I86_mix13_m8
+     44						 public	 _I86_mix13_s8
+     45						 public	 _I86_amp13_8
+     46						 public	 _I86_clrbuf13
+     47						 extrn	 showregs_Cpp:proc
+     48
+     49					 MACRO	 showregs
+     50						 mov	 [__sav_ebp],ebp
+     51						 mov	 ebp,[mixparameters]
+     52						 pushad
+     53
+     54						 push	 ss
+     55						 push	 gs
+     56						 push	 fs
+     57						 push	 es
+Turbo Assembler	 Version 3.2	    12/03/97 20:37:56	    Page 2
+m13i86.asm
+
+
+
+     58						 push	 ds
+     59						 push	 cs
+     60						 push	 esp
+     61						 push	 [__sav_ebp]
+     62						 push	 edi
+     63						 push	 esi
+     64						 push	 edx
+     65						 push	 ecx
+     66						 push	 ebx
+     67						 push	 eax
+     68
+     69						 call	 showregs_Cpp
+     70						 sub	 esp,8*4+6*2
+     71						 popad
+     72						 mov	 ebp,[__sav_ebp]
+     73					 ENDM
+     74
+     75
+     76					 ; 13BIT-mix: MONO-8BIT-mixing -------------------------------------------------
+     77	00000000			 proc	 _I86_mix13_m8
+     78						 arg	 Destination:DWORD,Source:DWORD,ofs:DWORD,frac:DWORD,\
+     79							 direction:DWORD,step_int:DWORD,step_frac:DWORD,\
+     80							 todo:DWORD,vol:DWORD,panpos:DWORD
+     81
+1    82	00000000  C8 0000 00			 ENTERD	 00000h,0
+1    83	00000004  60				 pushad
+     84	00000005  89 2D	0000A204r		 mov	 [mixparameters],ebp
+     85
+     86						 ; 'local volume'
+     87	0000000B  8B 5D	28			 mov	 ebx,[vol]
+     88	0000000E  C1 E3	08			 shl	 ebx,8
+     89
+     90	00000011  8B 7D	08			 mov	 edi,[Destination]
+     91
+     92	00000014  8B 75	0C			 mov	 esi,[Source]
+     93	00000017  8B 45	10			 mov	 eax,[ofs]
+     94	0000001A  03 30				 add	 esi,[eax]
+     95
+     96	0000001C  8B 45	14			 mov	 eax,[frac]
+     97	0000001F  8B 10				 mov	 edx,[eax]
+     98	00000021  8B 4D	24			 mov	 ecx,[todo]
+     99
+    100	00000024  8B 45	1C			 mov	 eax,[step_int]
+    101	00000027  A3 0000A21Er			 mov	 [__stepint],eax
+    102	0000002C  8B 45	20			 mov	 eax,[step_frac]
+    103	0000002F  A3 0000A21Ar			 mov	 [__stepfrac],eax
+    104
+    105	00000034  83 7D	18 01			 cmp	 [direction],1
+    106	00000038  0F 84	000000D0		 je	 M8_negdir
+    107
+    108	0000003E  8B 2D	0000A21Ar		 mov	 ebp,[__stepfrac]
+    109
+    110					 ; ################################
+    111					 ; positiv direction:
+    112					 ; ################################
+    113
+    114					 ;---------------------------------------------------------------------------
+Turbo Assembler	 Version 3.2	    12/03/97 20:37:56	    Page 3
+m13i86.asm
+
+
+
+    115					 ;inner	loop unrolled 4	times...
+    116					 ;---------------------------------------------------------------------------
+    117
+    118	00000044  8B C1				 mov	 eax,ecx
+    119	00000046  C1 E9	02			 shr	 ecx,2
+    120	00000049  83 E0	03			 and	 eax,3
+    121	0000004C  74 56				 jz	 M8P_premixloop
+    122	0000004E  A9 00000002			 test	 eax,2
+    123	00000053  74 37				 je	 M8P_extra1
+    124	00000055  A9 00000001			 test	 eax,1
+    125	0000005A  74 18				 je	 M8P_extra2
+    126
+    127	0000005C			 M8P_extra3:
+    128	0000005C  03 D5				 add	 edx,ebp
+    129	0000005E  8A 1E				 mov	 bl,[esi]
+    130	00000060  13 35	0000A21Er		 adc	 esi,[__stepint]
+    131	00000066  66| 8B 84 1B	      +		 mov	 ax,[volumetab+ebx+ebx]
+    132		  00000000r
+    133	0000006E  66| 01 07			 add	 [edi],ax
+    134	00000071  83 C7	02			 add	 edi,2
+    135	00000074			 M8P_extra2:
+    136	00000074  03 D5				 add	 edx,ebp
+    137	00000076  8A 1E				 mov	 bl,[esi]
+    138	00000078  13 35	0000A21Er		 adc	 esi,[__stepint]
+    139	0000007E  66| 8B 84 1B	      +		 mov	 ax,[volumetab+ebx+ebx]
+    140		  00000000r
+    141	00000086  66| 01 07			 add	 [edi],ax
+    142	00000089  83 C7	02			 add	 edi,2
+    143	0000008C			 M8P_extra1:
+    144	0000008C  03 D5				 add	 edx,ebp
+    145	0000008E  8A 1E				 mov	 bl,[esi]
+    146	00000090  13 35	0000A21Er		 adc	 esi,[__stepint]
+    147	00000096  66| 8B 84 1B	      +		 mov	 ax,[volumetab+ebx+ebx]
+    148		  00000000r
+    149	0000009E  66| 01 07			 add	 [edi],ax
+    150	000000A1  83 C7	02			 add	 edi,2
+    151
+    152	000000A4			 M8P_premixloop:
+    153	000000A4  83 F9	00			 cmp	 ecx,0
+    154	000000A7  0F 84	00000129		 je	 M8_endmix
+    155
+    156					 ;ENDM
+    157
+    158					 MACRO	 innerl	 nr
+    159						 add	 edx,ebp
+    160						 mov	 bl,[esi]
+    161						 mov	 ax,[volumetab+ebx+ebx]
+    162						 adc	 esi,ecx
+    163						 add	 [edi+nr],ax
+    164					 ENDM
+    165
+    166	000000AD  8B C1				 mov	 eax,ecx
+    167	000000AF  C1 E0	10			 shl	 eax,16
+    168	000000B2  8B 0D	0000A21Er		 mov	 ecx,[__stepint]
+    169					 align 4
+    170	000000B8			 M8P_mixloop:
+    171						 innerl	 0
+Turbo Assembler	 Version 3.2	    12/03/97 20:37:56	    Page 4
+m13i86.asm
+
+
+
+1   172	000000B8  03 D5				 add	 edx,ebp
+1   173	000000BA  8A 1E				 mov	 bl,[esi]
+1   174	000000BC  66| 8B 84 1B	      +		 mov	 ax,[volumetab+ebx+ebx]
+    175		  00000000r
+1   176	000000C4  13 F1				 adc	 esi,ecx
+1   177	000000C6  66| 01 07			 add	 [edi+0],ax
+    178						 innerl	 2
+1   179	000000C9  03 D5				 add	 edx,ebp
+1   180	000000CB  8A 1E				 mov	 bl,[esi]
+1   181	000000CD  66| 8B 84 1B	      +		 mov	 ax,[volumetab+ebx+ebx]
+    182		  00000000r
+1   183	000000D5  13 F1				 adc	 esi,ecx
+1   184	000000D7  66| 01 47 02			 add	 [edi+2],ax
+    185						 innerl	 4
+1   186	000000DB  03 D5				 add	 edx,ebp
+1   187	000000DD  8A 1E				 mov	 bl,[esi]
+1   188	000000DF  66| 8B 84 1B	      +		 mov	 ax,[volumetab+ebx+ebx]
+    189		  00000000r
+1   190	000000E7  13 F1				 adc	 esi,ecx
+1   191	000000E9  66| 01 47 04			 add	 [edi+4],ax
+    192						 innerl	 6
+1   193	000000ED  03 D5				 add	 edx,ebp
+1   194	000000EF  8A 1E				 mov	 bl,[esi]
+1   195	000000F1  66| 8B 84 1B	      +		 mov	 ax,[volumetab+ebx+ebx]
+    196		  00000000r
+1   197	000000F9  13 F1				 adc	 esi,ecx
+1   198	000000FB  66| 01 47 06			 add	 [edi+6],ax
+    199	000000FF  83 C7	08			 add	 edi,8
+    200	00000102  2D 00010000			 sub	 eax,010000h
+    201	00000107  73 AF				 jnc	 M8P_mixloop
+    202
+    203					 ;ENDM
+    204
+    205	00000109  E9 000000C8			 jmp	 M8_endmix
+    206					 ;---------------------------------------------------------------------------
+    207
+    208	0000010E			 M8_negdir:
+    209					 ; ################################
+    210					 ; negativ direction:
+    211					 ; ################################
+    212
+    213	0000010E  8B 2D	0000A21Ar		 mov	 ebp,[__stepfrac]
+    214
+    215					 ;---------------------------------------------------------------------------
+    216					 ; not unrolled	loop -
+    217					 ;---------------------------------------------------------------------------
+    218					 ;mixloop:
+    219					 ;	 sub	 edx,ebp
+    220					 ;	 mov	 bl,[esi]
+    221					 ;	 sbc	 esi,[__stepint]
+    222					 ;	 mov	 ax,[volumetab+ebx+ebx]
+    223					 ;	 add	 [edi],ax
+    224					 ;	 add	 edi,2
+    225					 ;	 dec	 ecx
+    226					 ;	 jnz	 mixloop
+    227					 ;---------------------------------------------------------------------------
+    228					 ;unrolled 4 times... just check this for time save
+Turbo Assembler	 Version 3.2	    12/03/97 20:37:56	    Page 5
+m13i86.asm
+
+
+
+    229					 ;---------------------------------------------------------------------------
+    230	00000114  8B C1				 mov	 eax,ecx
+    231	00000116  C1 E9	02			 shr	 ecx,2
+    232	00000119  83 E0	03			 and	 eax,3
+    233	0000011C  74 56				 jz	 M8N_premixloop
+    234	0000011E  A9 00000002			 test	 eax,2
+    235	00000123  74 37				 je	 M8N_extra1
+    236	00000125  A9 00000001			 test	 eax,1
+    237	0000012A  74 18				 je	 M8N_extra2
+    238
+    239	0000012C			 M8N_extra3:
+    240	0000012C  2B D5				 sub	 edx,ebp
+    241	0000012E  8A 1E				 mov	 bl,[esi]
+    242	00000130  1B 35	0000A21Er		 sbb	 esi,[__stepint]
+    243	00000136  66| 8B 84 1B	      +		 mov	 ax,[volumetab+ebx+ebx]
+    244		  00000000r
+    245	0000013E  66| 01 07			 add	 [edi],ax
+    246	00000141  83 C7	02			 add	 edi,2
+    247	00000144			 M8N_extra2:
+    248	00000144  2B D5				 sub	 edx,ebp
+    249	00000146  8A 1E				 mov	 bl,[esi]
+    250	00000148  1B 35	0000A21Er		 sbb	 esi,[__stepint]
+    251	0000014E  66| 8B 84 1B	      +		 mov	 ax,[volumetab+ebx+ebx]
+    252		  00000000r
+    253	00000156  66| 01 07			 add	 [edi],ax
+    254	00000159  83 C7	02			 add	 edi,2
+    255	0000015C			 M8N_extra1:
+    256	0000015C  2B D5				 sub	 edx,ebp
+    257	0000015E  8A 1E				 mov	 bl,[esi]
+    258	00000160  1B 35	0000A21Er		 sbb	 esi,[__stepint]
+    259	00000166  66| 8B 84 1B	      +		 mov	 ax,[volumetab+ebx+ebx]
+    260		  00000000r
+    261	0000016E  66| 01 07			 add	 [edi],ax
+    262	00000171  83 C7	02			 add	 edi,2
+    263
+    264	00000174			 M8N_premixloop:
+    265	00000174  83 F9	00			 cmp	 ecx,0
+    266	00000177  74 5D				 je	 M8_endmix
+    267
+    268	00000179			 M8N_mixloop:
+    269					 ;---
+    270	00000179  2B D5				 sub	 edx,ebp
+    271	0000017B  8A 1E				 mov	 bl,[esi]
+    272	0000017D  1B 35	0000A21Er		 sbb	 esi,[__stepint]
+    273	00000183  66| 8B 84 1B	      +		 mov	 ax,[volumetab+ebx+ebx]
+    274		  00000000r
+    275	0000018B  66| 01 07			 add	 [edi],ax
+    276					 ;---
+    277	0000018E  2B D5				 sub	 edx,ebp
+    278	00000190  8A 1E				 mov	 bl,[esi]
+    279	00000192  1B 35	0000A21Er		 sbb	 esi,[__stepint]
+    280	00000198  66| 8B 84 1B	      +		 mov	 ax,[volumetab+ebx+ebx]
+    281		  00000000r
+    282	000001A0  66| 01 47 02			 add	 [edi+2],ax
+    283					 ;---
+    284	000001A4  2B D5				 sub	 edx,ebp
+    285	000001A6  8A 1E				 mov	 bl,[esi]
+Turbo Assembler	 Version 3.2	    12/03/97 20:37:56	    Page 6
+m13i86.asm
+
+
+
+    286	000001A8  1B 35	0000A21Er		 sbb	 esi,[__stepint]
+    287	000001AE  66| 8B 84 1B	      +		 mov	 ax,[volumetab+ebx+ebx]
+    288		  00000000r
+    289	000001B6  66| 01 47 04			 add	 [edi+4],ax
+    290					 ;---
+    291	000001BA  2B D5				 sub	 edx,ebp
+    292	000001BC  8A 1E				 mov	 bl,[esi]
+    293	000001BE  1B 35	0000A21Er		 sbb	 esi,[__stepint]
+    294	000001C4  66| 8B 84 1B	      +		 mov	 ax,[volumetab+ebx+ebx]
+    295		  00000000r
+    296	000001CC  66| 01 47 06			 add	 [edi+6],ax
+    297					 ;---- end of unroll
+    298	000001D0  83 C7	08			 add	 edi,8
+    299	000001D3  49				 dec	 ecx
+    300	000001D4  75 A3				 jnz	 M8N_mixloop
+    301					 ;---------------------------------------------------------------------------
+    302	000001D6			 M8_endmix:
+    303	000001D6  8B 2D	0000A204r		 mov	 ebp,[mixparameters]
+    304
+    305						 ; write back ofs,frac
+    306	000001DC  2B 75	0C			 sub	 esi,[Source]
+    307	000001DF  8B 45	10			 mov	 eax,[ofs]
+    308	000001E2  89 30				 mov	 [eax],esi
+    309	000001E4  8B 45	14			 mov	 eax,[frac]
+    310	000001E7  89 10				 mov	 [eax],edx
+    311
+    312	000001E9  61				 popad
+    313
+1   314	000001EA  C9				 LEAVED
+1   315	000001EB  C3				 RET	 00000h
+    316	000001EC			 endp	 _I86_mix13_m8
+    317
+    318
+    319					 ; 13BIT-mix: STEREO-8BIT-mixing -----------------------------------------------
+    320	000001EC			 proc	 _I86_mix13_s8
+    321						 arg	 Destination:DWORD,Source:DWORD,ofs:DWORD,frac:DWORD,\
+    322							 direction:DWORD,step_int:DWORD,step_frac:DWORD,\
+    323							 todo:DWORD,vol:DWORD,panpos:DWORD
+    324
+1   325	000001EC  C8 0000 00			 ENTERD	 00000h,0
+1   326	000001F0  60				 pushad
+    327	000001F1  89 2D	0000A204r		 mov	 [mixparameters],ebp
+    328
+    329						 ; 'local volume'
+    330	000001F7  8B 5D	28			 mov	 ebx,[vol]
+    331	000001FA  8B 45	2C			 mov	 eax,[panpos]
+    332	000001FD  F7 EB				 imul	 ebx
+    333	000001FF  88 25	0000A214r		 mov	 [lvol],ah
+    334	00000205  B8 000000FF			 mov	 eax,255
+    335	0000020A  2B 45	2C			 sub	 eax,[panpos]
+    336	0000020D  F7 EB				 imul	 ebx
+    337	0000020F  88 25	0000A215r		 mov	 [rvol],ah
+    338
+    339	00000215  8B 7D	08			 mov	 edi,[Destination]
+    340
+    341	00000218  8B 75	0C			 mov	 esi,[Source]
+    342	0000021B  8B 45	10			 mov	 eax,[ofs]
+Turbo Assembler	 Version 3.2	    12/03/97 20:37:56	    Page 7
+m13i86.asm
+
+
+
+    343	0000021E  03 30				 add	 esi,[eax]
+    344
+    345	00000220  8B 45	14			 mov	 eax,[frac]
+    346	00000223  8B 10				 mov	 edx,[eax]
+    347	00000225  8B 4D	24			 mov	 ecx,[todo]
+    348
+    349	00000228  8B 45	1C			 mov	 eax,[step_int]
+    350	0000022B  A3 0000A21Er			 mov	 [__stepint],eax
+    351	00000230  8B 45	20			 mov	 eax,[step_frac]
+    352	00000233  A3 0000A21Ar			 mov	 [__stepfrac],eax
+    353
+    354	00000238  83 7D	18 01			 cmp	 [direction],1
+    355	0000023C  0F 84	0000007F		 je	 S8_negdir
+    356
+    357					 ; positiv direction:
+    358	00000242  8B 2D	0000A21Ar		 mov	 ebp,[__stepfrac]
+    359	00000248  C1 E1	10			 shl	 ecx,16
+    360	0000024B  8A 0D	0000A214r		 mov	 cl,[lvol]
+    361	00000251  8A 2D	0000A215r		 mov	 ch,[rvol]
+    362
+    363	00000257  83 3D	0000A21Er 00		 cmp	 [__stepint],0
+    364	0000025E  74 32				 je	 S8P_zeroint_mixloop
+    365
+    366	00000260			 S8P_mixloop:
+    367	00000260  8A F9				 mov	 bh,cl
+    368	00000262  03 D5				 add	 edx,ebp		 ; pair	ok
+    369	00000264  8A 1E				 mov	 bl,[esi]
+    370	00000266  13 35	0000A21Er		 adc	 esi,[__stepint]	 ; pair	ok
+    371	0000026C  66| 8B 84 1B	      +		 mov	 ax,[volumetab+ebx+ebx]
+    372		  00000000r
+    373	00000274  8A FD				 mov	 bh,ch			 ; pair	ok
+    374	00000276  66| 01 07			 add	 [edi],ax
+    375	00000279  66| 8B 84 1B	      +		 mov	 ax,[volumetab+ebx+ebx]	 ; pair	ok ?
+    376		  00000000r
+    377	00000281  66| 01 47 02			 add	 [edi+2],ax
+    378	00000285  83 C7	04			 add	 edi,4			 ; pair	ok ?
+    379	00000288  81 E9	00010000		 sub	 ecx,010000h
+    380	0000028E  73 D0				 jnc	 S8P_mixloop		 ; pair	ok
+    381	00000290  EB 74				 jmp	 S8_endmix
+    382
+    383	00000292			 S8P_zeroint_mixloop:
+    384	00000292  8A F9				 mov	 bh,cl
+    385	00000294  03 D5				 add	 edx,ebp		 ; pair	ok
+    386	00000296  8A 1E				 mov	 bl,[esi]
+    387	00000298  83 D6	00			 adc	 esi,0			 ; pair	ok
+    388	0000029B  66| 8B 84 1B	      +		 mov	 ax,[volumetab+ebx+ebx]
+    389		  00000000r
+    390	000002A3  8A FD				 mov	 bh,ch			 ; pair	ok
+    391	000002A5  66| 01 07			 add	 [edi],ax
+    392	000002A8  66| 8B 04 5D	      +		 mov	 ax,[volumetab+2*ebx]	 ; pair	ok ?
+    393		  00000000r
+    394	000002B0  66| 01 47 02			 add	 [edi+2],ax
+    395	000002B4  83 C7	04			 add	 edi,4			 ; pair	ok ?
+    396	000002B7  81 E9	00010000		 sub	 ecx,010000h
+    397	000002BD  73 D3				 jnc	 S8P_zeroint_mixloop	 ; pair	ok
+    398	000002BF  EB 45				 jmp	 S8_endmix
+    399
+Turbo Assembler	 Version 3.2	    12/03/97 20:37:56	    Page 8
+m13i86.asm
+
+
+
+    400
+    401					 ; negativ direction:
+    402
+    403	000002C1			 S8_negdir:
+    404
+    405	000002C1  8B 2D	0000A21Ar		 mov	 ebp,[__stepfrac]
+    406	000002C7  C1 E1	10			 shl	 ecx,16
+    407	000002CA  8A 0D	0000A214r		 mov	 cl,[lvol]
+    408	000002D0  8A 2D	0000A215r		 mov	 ch,[rvol]
+    409
+    410	000002D6			 S8N_mixloop:
+    411	000002D6  8A F9				 mov	 bh,cl
+    412	000002D8  2B D5				 sub	 edx,ebp	 ; pair	ok
+    413
+    414	000002DA  8A 1E				 mov	 bl,[esi]
+    415	000002DC  1B 35	0000A21Er		 sbb	 esi,[__stepint]	 ; pair	ok
+    416
+    417	000002E2  66| 8B 84 1B	      +		 mov	 ax,[volumetab+ebx+ebx]
+    418		  00000000r
+    419	000002EA  8A FD				 mov	 bh,ch		 ; pair	ok
+    420
+    421	000002EC  66| 01 07			 add	 [edi],ax
+    422	000002EF  66| 8B 04 5D	      +		 mov	 ax,[volumetab+2*ebx]	 ; pair	ok ?
+    423		  00000000r
+    424
+    425	000002F7  66| 01 47 02			 add	 [edi+2],ax
+    426	000002FB  83 C7	04			 add	 edi,4		 ; pair	ok ?
+    427
+    428	000002FE  81 E9	00010000		 sub	 ecx,010000h
+    429	00000304  73 D0				 jnc	 S8N_mixloop	 ; pair	ok
+    430
+    431	00000306			 S8_endmix:
+    432	00000306  8B 2D	0000A204r		 mov	 ebp,[mixparameters]
+    433
+    434						 ; write back ofs,frac
+    435	0000030C  2B 75	0C			 sub	 esi,[Source]
+    436	0000030F  8B 45	10			 mov	 eax,[ofs]
+    437	00000312  89 30				 mov	 [eax],esi
+    438	00000314  8B 45	14			 mov	 eax,[frac]
+    439	00000317  89 10				 mov	 [eax],edx
+    440
+    441	00000319  61				 popad
+    442
+1   443	0000031A  C9				 LEAVED
+1   444	0000031B  C3				 RET	 00000h
+    445	0000031C			 endp	 _I86_mix13_s8
+    446
+    447
+    448					 ; 13BIT-mix: amplify to 8BIT --------------------------------------------------
+    449	0000031C			 proc	 _I86_amp13_8
+    450						 arg	 Destination:DWORD,Source:DWORD,count:DWORD
+1   451	0000031C  C8 0000 00			 ENTERD	 00000h,0
+1   452	00000320  60				 pushad
+    453	00000321  33 DB				 xor	 ebx,ebx
+    454	00000323  8B 7D	0C			 mov	 edi,[Source]
+    455	00000326  8B 75	08			 mov	 esi,[Destination]
+    456	00000329  8B 4D	10			 mov	 ecx,[count]
+Turbo Assembler	 Version 3.2	    12/03/97 20:37:56	    Page 9
+m13i86.asm
+
+
+
+    457
+    458	0000032C			 amploop:
+    459	0000032C  66| 8B 1F			 mov	 bx,[edi]
+    460	0000032F  83 C7	02			 add	 edi,2		 ; pair	ok
+    461
+    462	00000332  8A 04	5D 00008200r		 mov	 al,[posttab+2*ebx]
+    463	00000339  46				 inc	 esi		 ; pair	ok
+    464
+    465	0000033A  49				 dec	 ecx
+    466	0000033B  88 46	FF			 mov	 [esi-1],al
+    467	0000033E  75 EC				 jnz	 amploop
+    468
+    469	00000340  61				 popad
+1   470	00000341  C9				 LEAVED
+1   471	00000342  C3				 RET	 00000h
+    472	00000343			 endp	 _I86_amp13_8
+    473
+    474					 ; clear temporary buffer for 13bit mixing -------------------------------------
+    475	00000343			 proc	 _I86_clrbuf13
+    476						 arg	 Buffer:DWORD,Value:DWORD,entries:DWORD
+1   477	00000343  C8 0000 00			 ENTERD	 00000h,0
+1   478	00000347  60				 pushad
+    479
+    480	00000348  89 2D	0000A204r		 mov	 [mixparameters],ebp
+    481
+    482	0000034E  66| 8C D8			 mov	 ax,ds
+    483	00000351  8E C0				 mov	 es,ax
+    484	00000353  8B 7D	08			 mov	 edi,[Buffer]
+    485	00000356  8B 4D	10			 mov	 ecx,[entries]
+    486	00000359  8B 45	0C			 mov	 eax,[Value]
+    487	0000035C  66| 8B D8			 mov	 bx,ax
+    488	0000035F  C1 E0	10			 shl	 eax,16
+    489	00000362  66| 8B C3			 mov	 ax,bx
+    490	00000365  D1 E9				 shr	 ecx,1
+    491	00000367  F3> AB			 rep	 stosd
+    492	00000369  73 02				 jnc	 @@noadditional
+    493	0000036B  66| AB			 stosw
+    494	0000036D			 @@noadditional:
+    495	0000036D  61				 popad
+1   496	0000036E  C9				 LEAVED
+1   497	0000036F  C3				 RET	 00000h
+    498	00000370			 endp	 _I86_clrbuf13
+    499
+    500					 end
+Turbo Assembler	 Version 3.2	    12/03/97 20:37:56	    Page 10
+Symbol Table
+
+
+
+
+Symbol Name			  Type	 Value
+
+??DATE				  Text	 "12/03/97"
+??FILENAME			  Text	 "m13i86  "
+??TIME				  Text	 "20:37:56"
+??VERSION			  Number 0314
+@32BIT				  Text	 1
+@@NOADDITIONAL			  Near	 FLAT:036D
+@CODE				  Text	 FLAT
+@CODESIZE			  Text	 0
+@CPU				  Text	 0F8FH
+@CURSEG				  Text	 _TEXT
+@DATA				  Text	 FLAT
+@DATASIZE			  Text	 0
+@FILENAME			  Text	 M13I86
+@INTERFACE			  Text	 01H
+@MODEL				  Text	 1
+@STACK				  Text	 FLAT
+@WORDSIZE			  Text	 4
+AMPLOOP				  Near	 FLAT:032C
+BUFFER				  Number [FLAT:EBP+0008]
+COUNT				  Number [FLAT:EBP+0010]
+CYCLECOUNT			  Dword	 FLAT:A210
+DESTINATION			  Number [FLAT:EBP+0008]
+DIRECTION			  Number [FLAT:EBP+0018]
+ENTRIES				  Number [FLAT:EBP+0010]
+FRAC				  Number [FLAT:EBP+0014]
+LVOL				  Byte	 FLAT:A214
+M8N_EXTRA1			  Near	 FLAT:015C
+M8N_EXTRA2			  Near	 FLAT:0144
+M8N_EXTRA3			  Near	 FLAT:012C
+M8N_MIXLOOP			  Near	 FLAT:0179
+M8N_PREMIXLOOP			  Near	 FLAT:0174
+M8P_EXTRA1			  Near	 FLAT:008C
+M8P_EXTRA2			  Near	 FLAT:0074
+M8P_EXTRA3			  Near	 FLAT:005C
+M8P_MIXLOOP			  Near	 FLAT:00B8
+M8P_PREMIXLOOP			  Near	 FLAT:00A4
+M8_ENDMIX			  Near	 FLAT:01D6
+M8_NEGDIR			  Near	 FLAT:010E
+MIXCLOCKS (_MIXCLOCKS)		  Dword	 FLAT:A208
+MIXLOOPS (_MIXLOOPS)		  Dword	 FLAT:A20C
+MIXPARAMETERS			  Dword	 FLAT:A204
+MIXSTACKPTR			  Dword	 FLAT:A200
+OFS				  Number [FLAT:EBP+0010]
+PANPOS				  Number [FLAT:EBP+002C]
+PENTIUM				  Number 0000
+POSTTAB	(_POSTTAB)		  Byte	 FLAT:8200
+RVOL				  Byte	 FLAT:A215
+S8N_MIXLOOP			  Near	 FLAT:02D6
+S8P_MIXLOOP			  Near	 FLAT:0260
+S8P_ZEROINT_MIXLOOP		  Near	 FLAT:0292
+S8_ENDMIX			  Near	 FLAT:0306
+S8_NEGDIR			  Near	 FLAT:02C1
+SHOWREGS_CPP (_SHOWREGS_CPP)	  Near	 FLAT:---- Extern
+SOURCE				  Number [FLAT:EBP+000C]
+Turbo Assembler	 Version 3.2	    12/03/97 20:37:56	    Page 11
+Symbol Table
+
+
+
+STEP_FRAC			  Number [FLAT:EBP+0020]
+STEP_INT			  Number [FLAT:EBP+001C]
+TODO				  Number [FLAT:EBP+0024]
+VALUE				  Number [FLAT:EBP+000C]
+VOL				  Number [FLAT:EBP+0028]
+VOLUMETAB (_VOLUMETAB)		  Word	 FLAT:0000
+_I86_AMP13_8 (__I86_AMP13_8)	  Near	 FLAT:031C
+_I86_CLRBUF13 (__I86_CLRBUF13)	  Near	 FLAT:0343
+_I86_MIX13_M8 (__I86_MIX13_M8)	  Near	 FLAT:0000
+_I86_MIX13_S8 (__I86_MIX13_S8)	  Near	 FLAT:01EC
+__SAV_EBP			  Dword	 FLAT:A216
+__STEPFRAC			  Dword	 FLAT:A21A
+__STEPINT			  Dword	 FLAT:A21E
+
+Macro Name
+
+INNERL
+SHOWREGS
+
+Groups & Segments		  Bit Size Align  Combine Class
+
+DGROUP				  Group
+  _DATA				  32  A222 Dword  Public  DATA
+FLAT				  Group
+_TEXT				  32  0370 Dword  Public  CODE
+

@@ -1,0 +1,110 @@
+/*****************************************************************************
+   669    support routines for music file format 669
+  --------------------------------------------------------------------------
+   (c) copyright 1996 by A.Baresel
+    Created on 22.7.1996
+*****************************************************************************/
+
+#if !defined(__669_H__)
+#define __669_H__
+
+#ifdef __GNUC__
+#define pack __attribute__ ((packed))
+#else
+#define pack
+#endif
+
+#include "module.h"
+#include <stdio.h>
+#include "../global.h"
+
+/* ++++++++++++++++ Class def. +++++++++++++++++++++++++++++++++++++++++++ */
+class _669_c: public Module_c {
+public:
+  _669_c(char *name):Module_c(name) { load_module(); }
+  _669_c(FILE *f):Module_c(f)       { load_module(); }
+  _669_c(char *name,long offset):Module_c(name,offset) { load_module(); }
+  _669_c(FILE *f,long offset):Module_c(f,offset)       { load_module(); }
+  ~_669_c(void) { delete_module(); }
+  void load_module(void);      // load MTM-module
+
+protected: 
+/**************************************************************************/
+/* ++++++++++++++++++ 669 specific types ++++++++++++++++++++++++++++++++ */
+
+struct channel_t    {  BYTE note;
+		       WORD period;
+		       BYTE instr;
+		       BYTE volume;
+
+		       // effect & parameter
+		       WORD effect;
+		       BYTE parameter;    // last parameter != 0
+
+		       // vibrato
+		       WORD VibtabPos;    // position in table 0..63
+		       BYTE VibPar;       // last vibrato parameter (what is it?)
+
+		       // portamentos
+		       BYTE PortPara;     // last portamento parameters
+		       WORD Slideto;       // period value we slide to
+
+		       // for timing of some effects (e.g. retrigg,notecut)
+		       BYTE ctick;
+		       WORD numticks;
+
+		       // for pattern loops
+		       BYTE inside;       // inside a loop ?
+		       BYTE loopto;       // row to loop to
+		       BYTE loops;        // number of loops
+
+		     } chn[8];
+
+// no allignment in next structur:
+
+struct header_t { char ID[2] pack;
+		  char songmsg[108];
+		  BYTE no_Samples;
+		  BYTE no_Pattern;
+		  BYTE no_Orders;
+		} _669_header;
+
+struct instrument_t      {  char name[13];
+			    DWORD smplen pack;
+			    DWORD loopstart pack;
+			    DWORD loopend pack;
+			  } Instrument[64] pack; 
+
+	BYTE order[128];
+	BYTE pattern_speed[128];
+	BYTE pattern_len[128];
+	BYTE *Pattern_p[128];
+
+	//---- internal playdata
+	BYTE c_order;
+	BYTE c_row;
+	BYTE c_tick;
+	BYTE c_speed;
+	BYTE c_tempo;
+	BYTE c_pattern;
+	BYTE *c_position;
+
+	short startmodule(void);
+	short nextnotes(playinfo_t* playinfo_p);
+
+	void   delete_module(void);    // delete 669-module from memory
+
+	DWORD  readSMP8_BLK(BYTE * destination,DWORD size,BYTE bits);
+	DWORD  readSMP16_BLK(WORD * destination,DWORD size,BYTE bits);
+
+	void   effect_handling(struct playinfo_t * playinfo);
+	void   read_new_notes(struct playinfo_t * playinfo);
+        void   setup_channel(struct playinfo_t *playinfo,BYTE chnnr,
+			  BYTE note,BYTE instr,BYTE volume,BYTE effno, BYTE effpar);
+
+    friend void module_wprint(void);   // playing infos to curses screen
+    friend void mixdevice_wprint(void);
+    friend void awe32_wprint(void);
+};
+
+#endif

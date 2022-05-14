@@ -1,0 +1,19 @@
+
+all: $(ARCH_SPEC)
+	$(LD) -r -o dos.o $^
+
+pm_dma.o : pm_dma.cc
+	$(CC) $(MAIN_OPTS) $<
+
+rm_dma.o : rm_dma.cc
+	$(CC) $(MAIN_OPTS) $<
+
+dos_irq.o : dos_irq.cc
+	$(CC) $(MAIN_OPTS) $<
+
+irq.o : irq.cc irq.h
+	$(CC) $(MAIN_OPTS) $<
+
+clean:
+	@$(RM) *.o	
+

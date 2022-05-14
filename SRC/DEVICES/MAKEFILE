@@ -1,0 +1,21 @@
+#*****************************************************************************
+# Makefile for linking device library
+# ----------------------------------------------------------------------------
+# Created: 09.11.1996
+#*****************************************************************************
+
+libdevs.o: $(AUDIODEV)
+	$(LD) -r -o $(PLAYER_LIB)/libdevs.o $^
+
+depend:
+	@echo device depend not done.
+
+%.o : %.cc
+	$(CC) $(MAIN_OPTS) $<
+
+mixers.o :
+	@$(MAKE) -C mixers
+
+clean:
+	@$(MAKE) -C mixers clean
+	@$(RM) *.o

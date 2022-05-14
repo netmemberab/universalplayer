@@ -1,0 +1,12 @@
+
+MONO 8BIT:
+
+mixclocks: 3172125
+mixloops: 405340
+cycles per sample:   7.83
+
+STEREO 8BIT:
+
+mixclocks: 8198877
+mixloops: 592096
+cycles per sample (left&right):   13.85

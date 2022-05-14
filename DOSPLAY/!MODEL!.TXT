@@ -1,0 +1,40 @@
+
+Project: A gaphical interface based on OO-Module-Player-libs
+
+Language: C++
+
+System: DOS-only, but prepared for a Window-based player 
+        (prepared for X-Windows/Windows95/WindowsNT) - shareable codeparts
+
+First thing is just modelling, means developement of a koncept.
+-----------------------------------------------------------------------------
+
+Needs:
+
+  1) Interface should be "View"-based. A View includes several information
+     about internal structures and might be updated every screen refresh.
+
+  2) The following "Views" are definitly planed:
+        -HelpScreen-
+           * general information about struture of the player
+           * information about keys and functionality.
+           * information about commandline.
+        -ModuleNoteScreen-
+           * displaying information about currently playing module
+             the form it is displayed should be based on screen format
+             of the original tracker (=module composition tool)
+        -InternalNoteScreen-
+           * display based on structures were internaly used, e.g.
+             device depended information (current samples/frequencies/volumes)
+           (extensively used for debugging)
+
+  3) Interface is "eventdriven". For the DOS-version only key-events are
+     planed (helpscreen!). The window versions might differ from that and
+     include graphical buttons/menues (those'll generate the same events
+     like keydowns in DOS-version).
+
+  4) The Views do display internal OO-structures which are declared private,
+     so we need to declare all access functions (mainly also formed in classes)
+     as friends of the classes they do access.
+
+

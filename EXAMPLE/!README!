@@ -1,0 +1,6 @@
+example1.cc    .... MOD-Player for SoundBlasterAWE32 
+example2.cc    .... MOD-Player for GUS
+example3.cc    .... MOD-Player for SB MONO13 only
+example4.cc    .... MOD-Player for NOSOUND device
+
+example3.run ---> pentium cycle count

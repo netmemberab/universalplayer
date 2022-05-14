@@ -1,0 +1,10 @@
+# endian.h includes important macros that may change module reading !
+
+libmods.o: $(MODULES)
+	$(LD) -r -o $(PLAYER_LIB)/libmods.o $^
+
+%.o : %.cc
+	$(CC) $(MAIN_OPTS) $<
+
+clean:
+	@$(RM) *.o

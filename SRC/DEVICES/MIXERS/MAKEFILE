@@ -1,0 +1,36 @@
+#*****************************************************************************
+# Makefile for linking device library
+# ----------------------------------------------------------------------------
+# Created: 09.11.1996
+#*****************************************************************************
+
+requested: $(MIXERS)
+	$(LD) -r -o ../mixers.o $^
+
+%.o : %.cc
+	$(CC) $(MAIN_OPTS) $<
+
+mixer_13.o : mixer_13.cc m13i86.h $(PLAYER_INC)/devices/mixer_13.h $(PLAYER_INC)/devices/mixers.h
+	$(CC) $(MAIN_OPTS) $(OPTIMIZE) $<
+
+
+#	$(CC) $(MAIN_OPTS) $<
+
+
+
+mixer_16.o : mixer_16.cc mixer_16.h mixer.h
+	$(CC) $(MAIN_OPTS) $(OPTIMIZE) $<
+
+mixer_24.o : mixer_24.cc mixer_24.h mixer.h
+	$(CC) $(MAIN_OPTS) $(OPTIMIZE) $<
+
+%.o : %.asm
+	tasm /Zi /Ml /m $<
+	obj2coff/o2c *.obj
+	del *.obj
+
+depend:
+	@echo device depend not done.
+
+clean:
+	@$(RM) *.o

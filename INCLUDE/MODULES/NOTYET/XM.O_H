@@ -1,0 +1,246 @@
+/*****************************************************************************
+   XM    support routines for Fasttracker II modules
+
+  --------------------------------------------------------------------------
+   (c) copyright 1995,96 by A.Baresel
+    Created on 21.2.1996
+*****************************************************************************/
+
+#if !defined(__XM_H__)
+#define __XM_H__
+
+#ifdef __GNUC__
+#define pack __attribute__ ((packed))
+#else
+#define pack
+#endif
+
+#include "module.h"
+#include "global.h"
+
+#define FLAGS_LINEAR_FTAB 1
+
+/* ++++++++++++++++ Class def. +++++++++++++++++++++++++++++++++++++++++++ */
+class XM_c: public Module_c {
+public:
+  XM_c(char *name):Module_c(name) { if (status==0) load_module(); }
+  XM_c(FILE *f):Module_c(f)       { if (status==0) load_module(); }
+  XM_c(char *name,long offset):Module_c(name,offset) { if (status==0) load_module(); }
+  XM_c(FILE *f,long offset):Module_c(f,offset)       { if (status==0) load_module(); }
+  ~XM_c(void);
+
+protected: 
+/**************************************************************************/
+/* +++++++++++++++++++ XM specific types ++++++++++++++++++++++++++++++++ */
+
+struct typ_header      { char IDtext[17] pack;
+                         char Modulename[20] pack;
+                         BYTE endchar pack;           /* should be 0x1A */
+                         char Trackername[20] pack;
+                         WORD trackerversion pack;
+                         DWORD headersize pack;
+                         WORD songlen pack;
+                         WORD restart pack;
+                         WORD no_Channels pack;
+                         WORD no_Patterns pack;
+                         WORD no_Instruments pack;
+                         WORD flags pack;
+                         WORD defaulttempo pack;
+                         WORD defaultBPM pack;
+                        };
+
+struct typ_pattern      { DWORD headlen pack;
+                          BYTE  packtype pack;
+                          WORD  norows pack;
+                          WORD  datasize pack;
+                          BYTE * data;
+                        } Pattern[256];
+
+struct typ_sample    { DWORD smplen pack;
+                       DWORD smploopstart pack;
+                       DWORD smplooplen pack;
+                       BYTE volume pack;
+                       char finetune pack;
+                       BYTE smptype pack;     /* bit0,1: =1 loop =2 pingpong,
+                                            bit4: 16bit data */
+                       BYTE panning pack;
+                       char relnote pack;
+                       BYTE reserved pack;
+                       char smpname[23] pack;
+                       WORD smpnum pack;    /* real sample number on device */
+                     };
+
+struct t_envpoint { WORD pos;
+                    WORD level;
+                  };
+
+struct typ_instrument    {
+                            char instrumentname[23];
+                            WORD nosamples pack;
+                            char note_smp[96] pack;   /* for each note a smpnumber */
+                            struct t_envpoint volenv[12] pack;
+                            struct t_envpoint panenv[12] pack;
+                            BYTE novolpts pack;
+                            BYTE nopanpts pack;
+                            BYTE volsustain pack;
+                            BYTE volloopstart pack;
+                            BYTE volloopend pack;
+                            BYTE pansustain pack;
+                            BYTE panloopstart pack;
+                            BYTE panloopend pack;
+                            BYTE voltype pack;
+                            BYTE pantype pack;
+                            BYTE vibtype pack;
+                            BYTE vibsweep pack;
+                            char vibdeth pack;
+                            BYTE vibspeed pack;
+                            WORD volfadeout pack;
+                            WORD reserved pack;
+                            struct typ_sample (* sample)[16];
+                          };  /* 400 byte per instrument */
+
+struct typ_channel     { // Standard stuff for playing
+                         BYTE note;      // note in pattern (relative!)
+			 BYTE plynote;   // note that is really playing (non relative)
+                         BYTE instr;	 // current instrument
+                         BYTE smpno;     // sample is used of current instrument 
+                         WORD realsmpno; // sample number is used on device (linear)
+			 struct typ_instrument * instr_p; // pointer to instrument data
+			 struct typ_sample * smp_p;       // pointer to sample data
+                         WORD period;
+			 SBYTE finetune;  // possibly changed with a set finetune
+
+                         BYTE volume;    
+			 BYTE tmp_volume;  // is allways equal to volume, if not: tremolo or tremor is active
+
+                         BYTE panning;
+                         /* ----------------------------------------------- */
+                         /* instrument playing:           		    */
+                         // ---- Volume envelope ----
+                         BYTE ve_point;   // last envelop point we met
+                         WORD ve_tick;       // current tick from instrument start
+                         WORD ve_nextep;     // number of ticks till next envelope point
+                         WORD ve_delta;      // ticks between the current envelope points
+                         BYTE ve_from;
+                         BYTE ve_to;         // slide linear "from" "to"
+                         BYTE ve_sustain;    // Flag if halt on sustain point
+			 BYTE env_vol;       // current envelope volume
+
+		         // ---- Fadeout ----
+                         WORD fo_speed;      // fadeout speed (the bigger he value the faster we slide ;)
+                         WORD fadeout_vol;   // current fadeout volume if zero STOPMIX
+                         // ---- Panning envelope ----
+                         BYTE pe_point;    // last envelop point we met
+                         WORD pe_tick;     // current tick from instrument start
+                         WORD pe_nextep;   // number of ticks till next envelope point
+                         WORD pe_delta;    // ticks between the current envelope points
+                         BYTE pe_from;
+                         BYTE pe_to;       // slide linear "from" "to"
+                         BYTE pe_sustain;  // Flag if halt on sustain point
+			 BYTE env_pan;     // current envelope volume
+
+                         // ---- Auto Vibrato ----
+                         BYTE av_count;      // count down to zero till full amplitude */
+                         BYTE av_vibtabpos;
+                         // ------------------------------------------- 
+                         /* Effect handling:  - unlike in MODs and S3Ms in XM
+                                 you have to store last parameter for each
+                                 effect separate ... that's because you can
+                                 run 2 different effects at the same time ! */
+                         BYTE eff1no;    // volume colum - effect number
+                         BYTE eff2no;    // effect colum - effect number
+                         BYTE glisscontrol;
+                         BYTE Arp_par;
+                         BYTE VolSld_par;
+			 BYTE Gvolsl_par;
+                         BYTE PanSld_par;
+                         BYTE Vib_speed,Vib_depth;
+                         BYTE Trml_speed,Trml_depth;
+                         BYTE Port_par;
+                         WORD SlideTo;   // slide to period value...
+                         BYTE Trm_on,Trm_again; // tremor ON-time & time until next "on"
+                         BYTE Sldup_par;  // pitch slide up
+                         BYTE Slddwn_par; // pitch slide down
+			 BYTE FSldup_par; // fine pitch slide up
+			 BYTE FSlddwn_par; // fine pitch slide down
+			 BYTE xFSldup_par; // extra fine pitch slide up
+			 BYTE xFSlddwn_par; // extra fine pitch slide down
+                         BYTE SetOfs_par;
+			 // additional effect data: (changing while effect handling)
+			 BYTE arp_delta[3];     // 3 delta notes for arpeggio (first allways 0)
+			 WORD count1,count2;    // counter for vol/eff column
+			 BYTE Trm_count;
+
+			 BYTE (*vib_wavtab)[128];
+			 BYTE vib_tabcount;
+			 BYTE vib_reset_counter;
+
+			 BYTE (*trml_wavtab)[128];
+			 BYTE trml_tabcount;
+			 BYTE trml_reset_counter;
+
+			 BYTE ploop_start;
+			 BYTE ploop_count; // ==0xff if not in a loop
+
+			 BYTE notedly_note;
+			 BYTE notedly_instr;
+			 BYTE rtrg_len;    // ticks until retrigg (MOD-retrigger)
+
+			 BYTE mrtrg_len;    // ticks until multi retrigg (S3M-retrigger)
+			 BYTE mrtrg_volsld; // vol sliding
+			 BYTE mrtrg_count;  // counter for retrigging
+                        };
+      int c_order;
+      int c_row;
+      int c_tick;
+      BYTE *c_position; // far pointer to pattern data
+      int c_speed;
+      int c_tempo;
+      int global_vol;
+      struct typ_channel chn[MAXCHANNELS];
+
+      struct typ_header header;
+      BYTE   order[256];
+      BYTE   chnpan[32];
+      BYTE   * empty_patterndata;
+
+      struct typ_instrument * Instrument_p[256]; 
+             // (1..255) if no sample is stored 
+             //  -> it points only to instrument name or NULL !
+      WORD no_Samples;     /* real number of samples in all instruments */
+
+      short startmodule(void);
+      short nextnotes(struct playinfo_t* playinfo_p);
+
+      void   load_module(void);      // load XM-module
+      short  load_pattern(WORD pos,WORD no);
+      DWORD  readSMP8_BLK(BYTE * destination,DWORD size,BYTE bits);
+      DWORD  readSMP16_BLK(WORD * destination,DWORD size,BYTE bits);
+
+      void   set_final_vol(struct playinfo_t *playinfo);
+      void   do_volumeslide(struct playinfo_t *playinfo, int i);
+      void   effect_handling(struct playinfo_t * playinfo);
+      void   doeffects_patterndly(struct playinfo_t * playinfo);
+      void   read_new_notes(struct playinfo_t * playinfo);
+      void   jumpto(char jp2);
+      void   setup_channel(struct playinfo_t *playinfo,
+                           BYTE chnnr, BYTE note, BYTE instr, BYTE volcol, BYTE effno, BYTE effpar);
+
+      void Instrument_envelopes(struct playinfo_t *playinfo);
+    friend DWORD calculate_frequency(WORD period_val);
+    friend BYTE calculate_note(WORD period_val,SBYTE finetune);
+
+    friend void module_wprint(void);   // playing infos to curses screen
+    friend void mixdevice_wprint(void);
+    friend void awe32_wprint(void);
+
+    friend WORD calculate_period(BYTE note,SBYTE finetune);
+
+};
+/* 
+
+TODO:  !! panning envelope !!
+
+*/
+
+#endif

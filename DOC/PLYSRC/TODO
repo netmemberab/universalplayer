@@ -1,0 +1,30 @@
+  softwaremixer:
+    add: - real 16bit sample mixing for 24bit mixer
+
+  - fit the code for TCC,WATCOM,BPC
+
+
+  reassign S3M support,
+    and: - wrong fine slides ?? sbomb.s3m ?? or is it not implemented glisscontrol ?
+
+  reassign XM support,
+    and: - implement amiga frequency table correct !
+         - remove autovibrato bug (ignored if other pitch changes)
+         --> solve it with a flag ...
+
+  device.h:
+    - think again about the CHG_????? commands !
+
+  write UNIX support,
+     player as independed unix process, status change via signals+messages,
+
+  think about extensional playercontrols:
+     - what about synchronization with outernworld ? DEMO MAKING !
+
+  - rewrite MTM support
+  - rewrite, remove bugs & finish 669 support (anybody can tell me about tempos?)
+  - ?? add MIDI/SBK support ...
+  - ?? write DMF,STM support
+  - write IT support ... ImpulseTracker seems to be quite nice :) sounds 
+	very goooood on my SBAWE in SB16-mode :))
+  - write MDL support ... digital tracker ! another hard thing

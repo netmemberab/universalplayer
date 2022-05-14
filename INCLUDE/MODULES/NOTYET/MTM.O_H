@@ -1,0 +1,144 @@
+/*****************************************************************************
+   MTM    support routines for music file format MTM
+  --------------------------------------------------------------------------
+   (c) copyright 1996 by A.Baresel
+    Created on 22.7.1996
+*****************************************************************************/
+
+#if !defined(__MTM_H__)
+#define __MTM_H__
+
+#include "module.h"
+#include <stdio.h>
+#include "global.h"
+
+/* ++++++++++++++++ Class def. +++++++++++++++++++++++++++++++++++++++++++ */
+class MTM_c: public Module_c {
+public:
+  MTM_c(char *name):Module_c(name) { load_module(); }
+  MTM_c(FILE *f):Module_c(f)       { load_module(); }
+  MTM_c(char *name,long offset):Module_c(name,offset) { load_module(); }
+  MTM_c(FILE *f,long offset):Module_c(f,offset)       { load_module(); }
+  ~MTM_c(void) { delete_module(); }
+  void load_module(void);      // load MTM-module
+
+protected: 
+/**************************************************************************/
+/* ++++++++++++++++++ MTM specific types ++++++++++++++++++++++++++++++++ */
+
+struct channel_t    {  BYTE note;
+		       int  period;
+		       char finetune;  // last finetune setup
+		       BYTE instr;
+		       short volume;
+
+		       // effect & parameter
+		       WORD effect;
+		       WORD useeffect;    /* converted effect number */
+		       BYTE parameter;    /* last parameter != 0 */
+		       BYTE continueEff;
+
+		       // vibrato and tremolo
+		       WORD VibtabPos;   // position in table 0..63
+		       WORD TrmtabPos;   // position in table 0..63
+		       BYTE VibwavNo;    // waveform (sinus/ramp/square)
+		       BYTE TrmwavNo;    // waveform
+		       BYTE VibDepth;
+		       BYTE VibSpeed;     // last vibrato parameters
+
+		       // portamentos
+		       BYTE PortPara;      // last portamento parameters
+		       BYTE Glisscontrol;  // Slide with glisscontrol
+		       int Slideto;      // period value we slide to
+
+		       // arpeggio stuff
+		       BYTE ArpeggioPos;  // 0..2
+		       int periods[3];
+
+		       // for timing of some effects (e.g. retrigg,notecut)
+		       BYTE ctick;
+		       WORD numticks;
+		       BYTE sInst;
+		       WORD sNote;
+
+		       // for setofs effect
+		       WORD startoffset;
+		     } chn[MAXCHANNELS];
+
+// no allignment in next structur:
+
+
+struct header_t { char ID[3];
+		  BYTE version;
+		  char songname[20];
+		  WORD no_SavedTracks;   // <--- channels are saved separatly
+		  BYTE no_SavedPattern;
+		  BYTE no_Orders;
+		  WORD commentlen;
+		  BYTE no_Samples;
+		  BYTE attribute;
+		  BYTE bpt; // <--- beats per track. what is it ?
+		  BYTE no_Tracks;    // <-- channels !
+		  BYTE chnpan[32];  // pan positions for all channels
+		} MTM_header PACKSTRUC;
+
+struct instrument_t      {  char name[22];
+			    DWORD smplen;
+			    DWORD loopstart;
+			    DWORD loopend;
+			    SBYTE finetune;
+			    BYTE volume;
+			    BYTE attr;
+			  } Instrument[64] PACKSTRUC; 
+
+	BYTE order[128];
+	WORD (*pattern_p)[256][32]; // for each pattern which track is used
+                                    // pattern[patterno*32+channelno]
+        typedef BYTE track_t[64][3];   // each track contains 64 rows with 3 byte data
+        track_t *track_p;  // 65536 <- maximum number of tracks stored
+
+	//---- extra variables for global effects for all channels
+	//|  they are set in the channels, but handling follows after reading
+	//|  all channels !!
+	//-------------------
+	BYTE patternbreak;
+	BYTE pbreakto;
+	BYTE patternloop;
+	BYTE ploopto;
+	BYTE positionjump;
+	BYTE pjumpto;
+
+	//---- internal playdata
+	short c_order;
+	short c_row;
+	short c_tick;
+	short c_speed;
+	short c_tempo;
+        WORD (*c_Tracks)[32]; // points to currently used tracks numbers on this channel
+
+	//---- for pattern loops
+	BYTE inside;          // inside a loop ?
+	BYTE loopto;          // row to loop to
+	BYTE loops;           // number of loops
+	BYTE patterndelay;      // counter for pattern delay
+
+	short startmodule(void);
+	short nextnotes(playinfo_t* playinfo_p);
+
+	void   delete_module(void);    // delete MTM-module from memory
+	short  load_pattern(WORD pos,WORD no);
+	DWORD  readSMP8_BLK(BYTE * destination,DWORD size,BYTE bits);
+	DWORD  readSMP16_BLK(WORD * destination,DWORD size,BYTE bits);
+
+	void   effect_handling(struct playinfo_t * playinfo);
+	void   doeffects_patterndly(struct playinfo_t * playinfo);
+	void   read_new_notes(struct playinfo_t * playinfo);
+        void   setup_channel(struct playinfo_t *playinfo,BYTE chnnr,
+			  BYTE note,BYTE instr,BYTE effno, BYTE effpar);
+
+    friend void module_wprint(void);   // playing infos to curses screen
+    friend void mixdevice_wprint(void);
+    friend void awe32_wprint(void);
+};
+
+#endif

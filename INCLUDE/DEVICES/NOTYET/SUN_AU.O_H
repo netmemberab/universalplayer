@@ -1,0 +1,31 @@
+/****************************************************************************
+   Audio support under LINUX
+  --------------------------------------------------------------------------
+  (c) copyright 1995 by A.Baresel
+
+  created: 06.06.1996
+****************************************************************************/
+
+#if !defined(__LINUX_AU_H__)
+#define __LINUX_AU_H__
+
+#include "device.h"
+#include "../global.h"
+
+#define BUFSIZE 2048
+
+class Audio_c: public MixDevice_c {
+  protected:
+	char *buffer;       /* points to reserved mix buffer */
+	int Audio;          /* is descriptor to "/dev/audio" */
+	void playing(void); /* main loop is done here */
+  public:
+	Audio_c();
+	short StartPlay(void);
+	short StopPlay(void);
+	short LoadInstrument(short no,DWORD size,BYTE bits,BYTE loopflag,DWORD loopbeg);
+};
+
+
+#endif
+

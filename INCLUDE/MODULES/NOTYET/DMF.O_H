@@ -1,0 +1,93 @@
+/*****************************************************************************
+   DMF    support routines for music file format DMF
+  --------------------------------------------------------------------------
+   (c) copyright 1996 by A.Baresel
+    Created on 28.07.1996
+*****************************************************************************/
+
+#if !defined(__DMF_H__)
+#define __DMF_H__
+
+#ifdef __GNUC__
+#define pack __attribute__ ((packed))
+#else
+#define pack
+#endif
+
+#include "module.h"
+#include <stdio.h>
+#include "../global.h"
+
+/* ++++++++++++++++ Class def. +++++++++++++++++++++++++++++++++++++++++++ */
+class DMF_c: public Module_c {
+public:
+  DMF_c(char *name):Module_c(name) { load_module(); }
+  DMF_c(FILE *f):Module_c(f)       { load_module(); }
+  DMF_c(char *name,long offset):Module_c(name,offset) { load_module(); }
+  DMF_c(FILE *f,long offset):Module_c(f,offset)       { load_module(); }
+  ~DMF_c(void) { delete_module(); }
+
+protected: 
+/**************************************************************************/
+/* ++++++++++++++++++ DMF specific types ++++++++++++++++++++++++++++++++ */
+
+struct channel_t    {  BYTE note;
+		       WORD period;
+		       char finetune;  // last finetune setup
+		       BYTE instr;
+		       BYTE volume;
+
+		       // effect & parameter
+		       WORD effect;
+		       BYTE parameter;    // last parameter != 0
+
+		     } chn[MAXCHANNELS];
+
+// no allignment in next structur: (pack)
+
+struct instrument_t      {  
+			  } Instrument[];
+
+	char songname[21];
+	char Id[5];
+	BYTE emptypatn[64];
+	BYTE order[128];
+	BYTE chnpan[32];
+	BYTE * Pattern_p[256]; 
+
+	BYTE no_Pattern;
+	BYTE no_Channels;
+	BYTE no_Orders;
+	BYTE no_Instr;
+
+	//---- internal playdata
+	short c_order;
+	short c_row;
+	short c_tick;
+	BYTE *c_position;     
+	short c_speed;
+	short c_tempo;
+	BYTE  restart_pos;
+
+	BYTE patterndelay;      // counter for pattern delay
+
+	short startmodule(void);
+	short nextnotes(playinfo_t* playinfo_p);
+
+	void   delete_module(void);    // delete MOD-module from memory
+	void   load_module(void);      // load MOD-module
+	short  load_pattern(WORD pos,WORD no);
+	DWORD  readSMP8_BLK(BYTE * destination,DWORD size,BYTE bits);
+	DWORD  readSMP16_BLK(WORD * destination,DWORD size,BYTE bits);
+
+	void   effect_handling(struct playinfo_t * playinfo);
+	void   read_new_notes(struct playinfo_t * playinfo);
+	void   setup_channel(struct playinfo_t *playinfo,unsigned char chnnr,
+			      int period,short instr,short effno, short effpar);
+
+    friend void module_wprint(void);   // playing infos to curses screen
+    friend void mixdevice_wprint(void);
+    friend void awe32_wprint(void);
+};
+
+#endif

@@ -1,0 +1,41 @@
+#*****************************************************************************
+# Makefile for bilding libs on your maschine
+# ----------------------------------------------------------------------------
+# Created: 26.10.1996
+#*****************************************************************************
+
+include config
+
+include $(MAIN_MAKEFILE)
+
+all: instruments.m devices.m modules.m control.m arch.m
+
+depend:
+	@echo not done.
+
+arch.m:
+	@$(MAKE) -C arch $(ARCH_TYPE)
+
+modules.m:
+	@$(MAKE) -C modules
+
+devices.m:
+	@$(MAKE) -C devices
+
+instruments.m:
+	@$(MAKE) -C instrmts
+
+control.m:
+	@$(MAKE) -C control $(CONTROL)
+
+clean:
+	@$(RM) *.o
+	@$(MAKE) -C modules clean
+	@$(MAKE) -C instrmts clean
+	@$(MAKE) -C devices clean 
+	@$(MAKE) -C arch clean
+	@echo directories clean.
+
+help:
+	@echo 'make' will compile all libraries and put them into the lib directory:
+	@echo    $(PLAYER_LIB)

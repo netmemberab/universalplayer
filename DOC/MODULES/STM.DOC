@@ -1,0 +1,63 @@
+--------M-STM-------------------------------
+The ScreamTracker 1.0 format was the module format used by the
+ScreamTracker before version 2.0.
+
+OFFSET              Count TYPE   Description
+0000h                  20 char   ASCIIZ song name
+0014h                   8 char   Tracker name
+001Ch                   1 byte   ID=1Ah
+001Dh                   1 byte   File type
+                                 1 - song (contains no samples)
+                                 2 - module (contains samples)
+001Eh                   1 byte   Major version number
+001Fh                   1 byte   Minor version number
+0020h                   1 byte   Playback tempo
+0021h                   1 byte   Number of patterns
+                                 ="PAT"
+0022h                   1 byte   Global playback volume
+0023h                  13 byte   reserved
+0030h                  31 rec    Instrument data
+                       12 char   ASCIIZ instrument name
+                        1 byte   ID=0
+                        1 byte   Instrument disk
+                        1 word   reserved
+                        1 word   Sample length in bytes
+                        1 word   Sample loop start
+                        1 word   Sample loop end
+                        1 byte   Sample playback volume
+                        1 byte   reserved
+                        1 word   C3 frequency in Hz
+                        1 dword  reserved
+                        1 word   length in paragraphs
+                                 (only for modules,in songs:reserved)
+03D0h                  64 byte   Pattern orders
+0410h          4*64*"PAT" rec    Pattern data. Each pattern consists of
+                                 64 rows, each 4 channels. The channels
+                                 are stored from left ro right, row by row.
+                        1 byte   Note byte :
+                                   251 - last 3 bytes not stored, all bytes 0
+                                   252 - last 3 bytes not stored, note -0-,
+                                         whatever that means.
+                                   253 - last 3 bytes not stored, note ...
+                                   254 - undefined (reserved for run-time)
+                                   255 - undefined (reserved for run-time)
+                                   otherwise bit mapped :
+                                   0-3 : note (c=0,c#=1...)
+                                   4-7 : octave
+                        1 byte   Only valid if above byte < 251, bit mapped
+                                   0-2 ; lower bit of note volume
+                                   3-7 : instrument number
+                        1 byte   bit mapped
+                                   0-3 : Effect command in ProTracker format
+                                         seems to be overlapped by volume
+                                         bits...
+                                   4-6 : upper bits of volume
+                        1 byte   command data in ProTracker format
+0410h+                  ? byte   Raw sample data padded to 16 byte boundaries.
+ 4*64*4*"PAT"
+
+EXTENSION:STM
+OCCURENCES:PC
+PROGRAMS:ScreamTracker 1.0
+REFERENCE:
+SEE ALSO:S3M,MOD

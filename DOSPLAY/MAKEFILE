@@ -1,0 +1,21 @@
+NO=3
+
+# PLAYER=d:/andre/player
+PLAYER=e:/projects/player
+
+PLAYER_LIBs=$(PLAYER)/lib/plyctrl.o $(PLAYER)/lib/libdevs.o \
+	    $(PLAYER)/lib/libmods.o $(PLAYER)/lib/dos.o \
+	    $(PLAYER)/lib/libins.o
+PLAYER_INC=$(PLAYER)/include
+
+%.o : %.cc
+	gcc -c -I$(PLAYER_INC) $^
+
+# ...............................................................
+# the SoundBlaster AWE example with MOD loading:
+#
+player: player.o display.o keyb.o error.o
+	gcc -s -O6 $(PLAYER_LIBs) $^ -o player
+
+player.exe: player
+	stubify player
